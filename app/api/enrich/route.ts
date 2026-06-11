@@ -16,18 +16,155 @@ function chFetch(path: string, apiKey: string) {
 }
 
 // Normalise to 8-char zero-padded company number
-// Handles: "1234567" → "01234567", "OC123456" → "OC123456", "SC123456" → "SC123456"
 function normaliseCompanyNumber(raw: string): string {
   const cleaned = raw.replace(/\s/g, "").toUpperCase();
-  // Alpha-prefix companies (SC, NI, OC, SO, NC, NF, R, IP, SP, RS, IC, etc.)
   if (/^[A-Z]{1,2}\d+$/.test(cleaned)) {
     const match = cleaned.match(/^([A-Z]{1,2})(\d+)$/);
     if (match) {
       return match[1] + match[2].padStart(8 - match[1].length, "0");
     }
   }
-  // Pure numeric — pad to 8
   return cleaned.padStart(8, "0");
+}
+
+// Human-readable labels for common CH filing type codes
+const FILING_TYPE_LABELS: Record<string, string> = {
+  "AA": "Annual accounts filed",
+  "AA01": "Accounts type changed",
+  "AAMD": "Amended accounts filed",
+  "AD01": "Registered office address changed",
+  "AD02": "Single alternative inspection location changed",
+  "AD03": "Records moved to single alternative inspection location",
+  "AD04": "Records moved to registered office",
+  "AP01": "Director appointed",
+  "AP02": "Corporate director appointed",
+  "AP03": "Secretary appointed",
+  "AP04": "Corporate secretary appointed",
+  "AR01": "Annual return filed",
+  "CH01": "Director details changed",
+  "CH02": "Corporate director details changed",
+  "CH03": "Secretary details changed",
+  "CH04": "Corporate secretary details changed",
+  "CS01": "Confirmation statement filed",
+  "DS01": "Application to strike off",
+  "DS02": "Withdrawal of strike off application",
+  "MR01": "Charge created",
+  "MR02": "Charge satisfied",
+  "MR04": "Charge fully satisfied",
+  "NM01": "Company name changed",
+  "PSC01": "Person with significant control registered",
+  "PSC02": "Relevant legal entity with significant control registered",
+  "PSC03": "Other registrable person with significant control registered",
+  "PSC04": "Person with significant control details changed",
+  "PSC07": "Person with significant control ceased",
+  "PSC08": "Notification of significant control statement",
+  "PSC09": "Exemption from keeping register of persons with significant control",
+  "RP04": "Second filing",
+  "SH01": "Return of allotment of shares",
+  "SH02": "Consolidation of shares",
+  "SH03": "Purchase of own shares",
+  "SH06": "Cancellation of shares",
+  "SH07": "Share premium account cancelled",
+  "SH08": "Class of shares changed",
+  "SH10": "Particulars of variation of rights attached to shares",
+  "SH19": "Statement of capital following an order made by court for reduction of capital",
+  "TM01": "Director resigned",
+  "TM02": "Secretary resigned",
+  "DISS16": "Compulsory strike off action discontinued",
+  "GAZ1": "First gazette notice for compulsory strike-off",
+  "GAZ2": "Final gazette notice for compulsory strike-off",
+  "GAZ1(A)": "First gazette notice for voluntary strike-off",
+  "GAZ2(A)": "Final gazette notice for voluntary strike-off",
+  "LIQD": "Liquidation",
+  "600": "Appointment of liquidator",
+};
+
+// Description key -> human readable (CH uses hyphenated keys as description values)
+const DESCRIPTION_KEY_LABELS: Record<string, string> = {
+  "accounts-with-accounts-type-group": "Group accounts filed",
+  "accounts-with-accounts-type-full": "Full accounts filed",
+  "accounts-with-accounts-type-small": "Small company accounts filed",
+  "accounts-with-accounts-type-total-exemption-full": "Total exemption full accounts filed",
+  "accounts-with-accounts-type-total-exemption-small": "Total exemption small accounts filed",
+  "accounts-with-accounts-type-micro-entity": "Micro-entity accounts filed",
+  "accounts-with-accounts-type-dormant": "Dormant company accounts filed",
+  "accounts-with-accounts-type-abbreviated": "Abbreviated accounts filed",
+  "annual-return-company-with-made-up-date": "Annual return",
+  "confirmation-statement-with-no-updates": "Confirmation statement — no changes",
+  "confirmation-statement-with-updates": "Confirmation statement — with updates",
+  "change-registered-office-company-with-date": "Registered office address changed",
+  "change-person-director-company-with-change-date": "Director details changed",
+  "termination-director-company-with-name-termination-date": "Director resigned",
+  "appointment-person-director-company-with-name-date": "Director appointed",
+  "appointment-person-secretary-company-with-name-date": "Secretary appointed",
+  "termination-secretary-company-with-name-termination-date": "Secretary resigned",
+  "capital-cancellation-shares": "Cancellation of shares",
+  "capital-allotment-shares": "Allotment of shares",
+  "capital-purchase-own-shares": "Purchase of own shares",
+  "capital-reduction": "Reduction of capital",
+  "capital-cancellation-shares-premium": "Cancellation of share premium",
+  "persons-with-significant-control-statement-notification": "PSC statement filed",
+  "notification-of-a-person-with-significant-control": "PSC registered",
+  "cessation-of-a-person-with-significant-control": "PSC ceased",
+  "change-of-name-company": "Company name changed",
+  "gazette-filings-1": "First gazette notice for strike-off",
+  "gazette-filings-2": "Final gazette notice for strike-off",
+  "dissolution-voluntary": "Voluntary dissolution",
+  "dissolution-compulsory": "Compulsory dissolution",
+  "mortgage-charge-created": "Charge created",
+  "mortgage-charge-satisfied": "Charge satisfied",
+  "mortgage-charge-fully-satisfied": "Charge fully satisfied",
+};
+
+/**
+ * Resolve a human-readable filing description.
+ * Priority order:
+ * 1. description_values interpolation (if present, produces richest text)
+ * 2. DESCRIPTION_KEY_LABELS lookup on description key
+ * 3. FILING_TYPE_LABELS lookup on type code
+ * 4. Fall back to raw description key formatted as title case
+ */
+function resolveFilingDescription(
+  descriptionKey: string,
+  descriptionValues: Record<string, string>,
+  typeCode: string
+): string {
+  // 1. Try to interpolate description_values into a readable sentence
+  // CH description keys use {placeholders} that map to description_values fields
+  // e.g. "appointment-person-director-company-with-name-date" with {officer_name: "SMITH, Jane", date: "2020-01-15"}
+  if (descriptionKey && Object.keys(descriptionValues).length > 0) {
+    // Common interpolation patterns
+    const parts: string[] = [];
+    if (descriptionValues.officer_name) parts.push(descriptionValues.officer_name);
+    if (descriptionValues.company_name) parts.push(descriptionValues.company_name);
+
+    const baseLabel =
+      DESCRIPTION_KEY_LABELS[descriptionKey] ||
+      FILING_TYPE_LABELS[typeCode];
+
+    if (baseLabel) {
+      return parts.length > 0 ? `${baseLabel}: ${parts.join(", ")}` : baseLabel;
+    }
+  }
+
+  // 2. Direct description key lookup
+  if (descriptionKey && DESCRIPTION_KEY_LABELS[descriptionKey]) {
+    return DESCRIPTION_KEY_LABELS[descriptionKey];
+  }
+
+  // 3. Filing type code lookup
+  if (typeCode && FILING_TYPE_LABELS[typeCode]) {
+    return FILING_TYPE_LABELS[typeCode];
+  }
+
+  // 4. Format the raw key as readable text (replace hyphens with spaces, title case)
+  if (descriptionKey) {
+    return descriptionKey
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  return typeCode || "Filing";
 }
 
 export async function POST(req: NextRequest) {
@@ -57,8 +194,6 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Build parallel requests — always fetch profile + officers + filings
-    // Optionally fetch PSCs
     const requests: Promise<Response>[] = [
       chFetch(`/company/${companyNumber}`, apiKey),
       chFetch(`/company/${companyNumber}/officers?items_per_page=10&register_view=false`, apiKey),
@@ -71,7 +206,6 @@ export async function POST(req: NextRequest) {
     const responses = await Promise.all(requests);
     const [profileRes, officersRes, filingRes, pscRes] = responses;
 
-    // Handle 404 and 429 on profile (most critical)
     if (profileRes.status === 404) {
       return NextResponse.json(
         { error: "Company not found.", company_number: companyNumber },
@@ -109,14 +243,18 @@ export async function POST(req: NextRequest) {
         }));
     }
 
-    // 5 most recent filings
+    // 5 most recent filings — with human-readable descriptions
     let recentFilings: { type: string; date: string; description: string; category: string }[] = [];
     if (filingRes.ok) {
       const filingData = await filingRes.json();
       recentFilings = (filingData.items || []).map((f: Record<string, unknown>) => ({
         type: f.type as string,
         date: f.date as string,
-        description: (f.description as string) || "",
+        description: resolveFilingDescription(
+          (f.description as string) || "",
+          (f.description_values as Record<string, string>) || {},
+          (f.type as string) || ""
+        ),
         category: (f.category as string) || "",
       }));
     }
@@ -135,17 +273,14 @@ export async function POST(req: NextRequest) {
         }));
     }
 
-    // Registered address
     const addr = profile.registered_office_address || {};
 
-    // Accounts — CH profile has two shapes depending on API version/company type
-    // next_accounts.due_on is the correct field in live API
     const accountsObj = profile.accounts || null;
     const accounts = accountsObj
       ? {
           next_due:
-            accountsObj.next_accounts?.due_on ||  // live API shape
-            accountsObj.next_due ||               // fallback (some responses)
+            accountsObj.next_accounts?.due_on ||
+            accountsObj.next_due ||
             null,
           last_made_up_to:
             accountsObj.last_accounts?.period_end_on ||
@@ -156,7 +291,6 @@ export async function POST(req: NextRequest) {
         }
       : null;
 
-    // Confirmation statement
     const csObj = profile.confirmation_statement || null;
     const confirmationStatement = csObj
       ? {
@@ -168,7 +302,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       company_number: companyNumber,
       company_name: profile.company_name || null,
-      // CH returns company_status; "status" is an alias in older docs — handle both
       company_status: profile.company_status || profile.status || null,
       company_type: profile.type || null,
       incorporated_on: profile.date_of_creation || null,
