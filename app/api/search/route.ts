@@ -62,7 +62,6 @@ export async function GET(req: NextRequest) {
       total_results: data.total_results || results.length,
       returned: results.length,
       results,
-      source: "companies_house",
     });
   } catch (err: unknown) {
     return NextResponse.json({

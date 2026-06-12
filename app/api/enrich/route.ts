@@ -327,7 +327,6 @@ export async function POST(req: NextRequest) {
       total_officers: totalOfficers,
       recent_filings: recentFilings,
       ...(includePscs && { persons_with_significant_control: pscs }),
-      source: "companies_house",
     });
   } catch (err: unknown) {
     return NextResponse.json(
