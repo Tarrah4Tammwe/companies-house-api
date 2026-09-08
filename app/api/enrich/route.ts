@@ -112,6 +112,18 @@ async function handleEnrich(req: NextRequest) {
 
     const profile = await profileRes.json();
 
+    // 404 on a sub-resource is a genuine empty set. Any other failure must not
+    // look like a complete KYB payload with officers/filings/PSCs missing.
+    if (!officersRes.ok && officersRes.status !== 404) {
+      return jsonError("Unable to fetch company data.", 502);
+    }
+    if (!filingRes.ok && filingRes.status !== 404) {
+      return jsonError("Unable to fetch company data.", 502);
+    }
+    if (includePscs && pscRes && !pscRes.ok && pscRes.status !== 404) {
+      return jsonError("Unable to fetch company data.", 502);
+    }
+
     let activeOfficers: Officer[] = [];
     let totalOfficers = 0;
     if (officersRes.ok) {
