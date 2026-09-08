@@ -2,14 +2,12 @@ export default function Home() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
           background: #0A0F1E;
           color: #E2E8F0;
-          font-family: 'Inter', system-ui, sans-serif;
+          font-family: var(--font-geist-sans), system-ui, sans-serif;
           font-size: 15px;
           line-height: 1.6;
           -webkit-font-smoothing: antialiased;
@@ -63,13 +61,13 @@ export default function Home() {
         }
         .endpoint-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
         .method {
-          font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
+          font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: 11px; font-weight: 600;
           color: #fff; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.04em;
           white-space: nowrap;
         }
         .method-post { background: #2563EB; }
         .method-get { background: #059669; }
-        .path { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #7DD3FC; }
+        .path { font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: 13px; color: #7DD3FC; }
         .endpoint-desc { font-size: 13px; color: #64748B; line-height: 1.5; }
 
         /* Code cards */
@@ -86,7 +84,7 @@ export default function Home() {
         .code-tag { font-size: 11px; font-weight: 500; color: #22C55E; background: rgba(34,197,94,0.1); padding: 2px 8px; border-radius: 10px; }
         .code-tag.opt { color: #94A3B8; background: rgba(148,163,184,0.1); }
         pre {
-          font-family: 'JetBrains Mono', monospace !important;
+          font-family: var(--font-geist-mono), ui-monospace, monospace !important;
           font-size: 13px !important; line-height: 1.7;
           padding: 20px !important; overflow-x: auto;
           background: transparent !important; color: #CBD5E1;
@@ -113,7 +111,7 @@ export default function Home() {
         .format-table th { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #475569; padding: 8px 12px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.07); }
         .format-table td { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 13px; color: #CBD5E1; }
         .format-table tr:last-child td { border-bottom: none; }
-        .format-table td:first-child { font-family: 'JetBrains Mono', monospace; color: #7DD3FC; }
+        .format-table td:first-child { font-family: var(--font-geist-mono), ui-monospace, monospace; color: #7DD3FC; }
         .format-table td:nth-child(2) { color: #94A3B8; }
         .format-table td:last-child { font-size: 12px; color: #475569; }
 

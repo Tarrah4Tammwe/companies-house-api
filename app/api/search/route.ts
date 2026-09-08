@@ -1,41 +1,45 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { unauthorizedIfLocked } from "@/lib/auth";
+import { chFetch, getApiKey, retryAfterHeader } from "@/lib/ch-client";
+import { parseLimit, sanitiseSearchQuery } from "@/lib/coerce";
+import { corsPreflight, json, jsonError } from "@/lib/http";
 
-const CH_BASE = "https://api.company-information.service.gov.uk";
-
-function getApiKey(): string {
-  const key = process.env.COMPANIES_HOUSE_API_KEY;
-  if (!key) throw new Error("COMPANIES_HOUSE_API_KEY environment variable is not set.");
-  return key;
-}
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const locked = unauthorizedIfLocked(req);
+  if (locked) return locked;
+
   const { searchParams } = new URL(req.url);
-  const query = searchParams.get("q")?.trim();
-  const limit = Math.min(parseInt(searchParams.get("limit") || "5"), 20);
+  const query = sanitiseSearchQuery(searchParams.get("q"));
+  const limit = parseLimit(searchParams.get("limit"), 5, 20);
 
   if (!query) {
-    return NextResponse.json({ error: "q (search query) parameter is required." }, { status: 400 });
+    return jsonError("q (search query) parameter is required.", 400);
   }
 
-  let apiKey: string;
-  try {
-    apiKey = getApiKey();
-  } catch (e: unknown) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Config error." }, { status: 500 });
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    return jsonError("Service is not configured.", 503);
   }
 
-  const credentials = Buffer.from(`${apiKey}:`).toString("base64");
-
   try {
-    const res = await fetch(
-      `${CH_BASE}/search/companies?q=${encodeURIComponent(query)}&items_per_page=${limit}`,
-      {
-        headers: { Authorization: `Basic ${credentials}`, Accept: "application/json" },
-      }
+    const res = await chFetch(
+      `/search/companies?q=${encodeURIComponent(query)}&items_per_page=${limit}`,
+      apiKey
     );
 
+    if (res.status === 429) {
+      return jsonError("Rate limit reached. Please retry shortly.", 429, {
+        "Retry-After": retryAfterHeader(res),
+      });
+    }
+    if (res.status === 401) {
+      return jsonError("Service unavailable.", 503);
+    }
     if (!res.ok) {
-      return NextResponse.json({ error: "Companies House search error.", status: res.status }, { status: 502 });
+      return jsonError("Unable to search companies.", 502);
     }
 
     const data = await res.json();
@@ -57,16 +61,17 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json({
+    return json({
       query,
       total_results: data.total_results || results.length,
       returned: results.length,
       results,
     });
-  } catch (err: unknown) {
-    return NextResponse.json({
-      error: "Failed to reach Companies House API.",
-      detail: err instanceof Error ? err.message : "Unknown error",
-    }, { status: 502 });
+  } catch {
+    return jsonError("Unable to search companies.", 502);
   }
+}
+
+export async function OPTIONS() {
+  return corsPreflight();
 }
