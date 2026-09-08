@@ -7,7 +7,7 @@ Handles all UK company number formats: standard 8-digit, SC/NI/OC/R prefixes, au
 
 ## Endpoints
 
-### `POST /api/enrich`
+### `POST /api/enrich` (also `GET /api/enrich?company_number=…`)
 
 **Request:**
 ```json
@@ -17,7 +17,9 @@ Handles all UK company number formats: standard 8-digit, SC/NI/OC/R prefixes, au
 }
 ```
 
-`include_pscs` is optional (default false). When true, adds `persons_with_significant_control` to response.
+`include_pscs` is optional (default false). When true, adds `persons_with_significant_control` to the response. String values `"true"` / `"1"` are accepted (RapidAPI/Zyla consoles).
+
+`company_number` must be sent as a **string** so leading zeros are preserved.
 
 **Accepted company number formats:**
 
@@ -38,6 +40,7 @@ Handles all UK company number formats: standard 8-digit, SC/NI/OC/R prefixes, au
   "company_status": "active",
   "company_type": "ltd",
   "incorporated_on": "2020-01-15",
+  "dissolved_on": null,
   "jurisdiction": "england-wales",
   "registered_address": {
     "line1": "1 Example Street",
@@ -53,19 +56,20 @@ Handles all UK company number formats: standard 8-digit, SC/NI/OC/R prefixes, au
   "has_been_liquidated": false,
   "has_insolvency_history": false,
   "has_charges": false,
+  "registered_office_is_in_dispute": false,
   "accounts": {
     "next_due": "2025-10-15",
     "last_made_up_to": "2024-01-31",
     "account_type": "total-exemption-full",
     "overdue": false
   },
-  "confirmation_statement": { "next_due": "2026-01-20", "overdue": false },
+  "confirmation_statement": { "next_due": "2026-01-20", "last_made_up_to": "2025-01-20", "overdue": false },
   "active_officers": [
     { "name": "SMITH, Jane", "role": "director", "appointed": "2020-01-15", "nationality": "British" }
   ],
   "total_officers": 1,
   "recent_filings": [
-    { "type": "CS01", "date": "2025-01-18", "description": "...", "category": "confirmation-statement" }
+    { "type": "CS01", "date": "2025-01-18", "description": "Confirmation statement — no changes", "category": "confirmation-statement" }
   ],
   "persons_with_significant_control": [
     {
@@ -74,25 +78,27 @@ Handles all UK company number formats: standard 8-digit, SC/NI/OC/R prefixes, au
       "nature_of_control": ["ownership-of-shares-75-to-100-percent"],
       "notified_on": "2020-01-15"
     }
-  ],
-  "source": "companies_house"
+  ]
 }
 ```
 
 ### `GET /api/search?q=NAME&limit=5`
 
-Search companies by name. Returns up to 20 results.
+Search companies by name. `q` is required (max 160 characters). `limit` is 1–20 (invalid values fall back to 5).
 
 ### `GET /api/health`
 
-Service status.
+Service status. Does not require gateway secrets.
 
 ## Setup
 
 1. Register for a free Companies House API key: https://developer.company-information.service.gov.uk/get-started
    (Instant — no approval wait)
 2. Add to Vercel environment variables: `COMPANIES_HOUSE_API_KEY=your_key`
-3. Deploy
+3. **Lock the origin** so marketplace users cannot burn your upstream key by calling Vercel directly:
+   - RapidAPI: set `RAPIDAPI_PROXY_SECRET` (or `API_PROXY_SECRET`) to the value from the RapidAPI Gateway / Security tab. Requests must include `X-RapidAPI-Proxy-Secret`.
+   - Zyla (or a private key): set `API_ACCESS_KEY` and configure the hub to send it as `X-Api-Key`.
+4. Deploy
 
 ```bash
 npm install
@@ -113,8 +119,8 @@ npm run dev
 
 - **One call, full data** — parallel fetches for profile + officers + filings (+ PSCs optionally)
 - **Correct accounts field mapping** — uses `next_accounts.due_on` which matches the live API response shape
-- **Active officers only** — resigned officers filtered out automatically
+- **Active officers only** — resigned officers filtered out automatically (up to 100 officers per company)
 - **PSC support** — persons with significant control via `include_pscs: true`
 - **Risk signals** — `has_been_liquidated`, `has_insolvency_history`, `has_charges` in every response
 - **All company number formats** — SC, NI, OC, R prefixes + auto zero-padding
-- **Rate limit handling** — returns proper 429 with retry message
+- **Rate limit handling** — returns 429 with `Retry-After` when the upstream window is exhausted
